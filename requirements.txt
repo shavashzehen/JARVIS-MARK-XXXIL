@@ -1,4 +1,4 @@
-﻿sounddevice
+sounddevice
 google-genai
 google-generativeai
 pillow
@@ -22,3 +22,7 @@ youtube-transcript-api
 pywinauto
 python-pptx
 pyqt6
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+qrcode

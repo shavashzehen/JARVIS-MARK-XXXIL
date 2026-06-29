@@ -14,6 +14,12 @@ Response time: Respond as fast as you can
 TOOL ROUTING:
 
 computer_settings: ALL single OS actions (volume, brightness, wifi, close, shortcuts, power).
+computer_control: ALL keyboard & mouse operations, active window screenshot, recycle bin, locking PC, window management, system commands, volume, brightness, open URLs, and selected text grab.
+phone_control: ALL phone actions — open apps, tap, swipe, type, call, send messages (WhatsApp/SMS), record screen, screenshot, home/back, find & tap elements, check battery, ringer mode, camera photo capture, search/play YouTube, screen power state, diagnose and fix misconfigured settings. Supports 10-25 phones via ADB. Phone must be USB/WiFi connected.
+screen_sentinel: security monitoring — start, stop, status or check of always-on screen watching for threats (scams, phishing, malware).
+smart_home: simulated smart home IoT device state toggle (lights, fan, AC, lock).
+web_agent: autonomous looping browser agent for multi-step browser tasks using Gemini Vision.
+jarvis_learning: Self-learning system for saving preferences and custom routine macros linked to voice triggers.
 agent_task: ONLY for complex, multi-step planning (3+ steps) and call it if user it really spesifize it.
 Language: Respond in user's language; extract parameters in English.
 Do not call agent_task while you can accomplish it with a tool

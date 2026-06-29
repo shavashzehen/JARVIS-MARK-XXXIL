@@ -232,6 +232,27 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None) -> str:
         from actions.computer_control import computer_control
         return computer_control(parameters=parameters, player=None) or "Done."
 
+    elif tool == "phone_control":
+        from actions.phone_control import phone_control
+        return phone_control(parameters=parameters, player=None) or "Done."
+
+    elif tool == "screen_sentinel":
+        from actions.screen_sentinel import screen_sentinel
+        return screen_sentinel(parameters=parameters, player=None, speak=speak) or "Done."
+
+    elif tool == "smart_home":
+        from actions.smart_home import smart_home
+        return smart_home(parameters=parameters, player=None, speak=speak) or "Done."
+
+    elif tool == "web_agent":
+        from actions.web_agent import run_autonomous_web_task
+        goal = parameters.get("goal", "") or parameters.get("query", "")
+        return run_autonomous_web_task(goal, player=None) or "Done."
+
+    elif tool == "jarvis_learning":
+        from actions.jarvis_learning import jarvis_learning
+        return jarvis_learning(parameters=parameters, player=None, speak=speak) or "Done."
+
     elif tool == "generated_code":
         description = parameters.get("description", "")
         if not description:

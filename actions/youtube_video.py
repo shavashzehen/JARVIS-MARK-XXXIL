@@ -390,11 +390,150 @@ def _handle_trending(parameters: dict, player, speak) -> str:
 
     return result
 
+def _handle_upload(parameters: dict, player, speak) -> str:
+    """Upload a video file to YouTube using the YouTube Data API v3."""
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+        from googleapiclient.errors import HttpError
+        from googleapiclient.http import MediaFileUpload
+    except ImportError:
+        return (
+            "YouTube upload dependencies are not installed. "
+            "Please run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2"
+        )
+
+    video_path_str = parameters.get("video_path") or parameters.get("path") or ""
+    if not video_path_str:
+        return "Please specify a video_path, sir."
+        
+    video_path = Path(video_path_str)
+    if not video_path.exists():
+        return f"Video file not found at: {video_path_str}"
+        
+    title = parameters.get("title") or video_path.stem
+    description = parameters.get("description") or "Uploaded via JARVIS"
+    tags_param = parameters.get("tags") or []
+    if isinstance(tags_param, str):
+        tags = [t.strip() for t in tags_param.split(",") if t.strip()]
+    else:
+        tags = list(tags_param)
+        
+    privacy = parameters.get("privacy_status") or parameters.get("privacy") or "public"
+    privacy = privacy.lower().strip()
+    if privacy not in ("public", "private", "unlisted"):
+        privacy = "public"
+        
+    if player:
+        player.write_log(f"[YouTube] Starting upload: {video_path.name}")
+    if speak:
+        speak(f"Starting YouTube upload for {title}, sir.")
+        
+    secrets_path = BASE_DIR / "config" / "client_secrets.json"
+    token_path = BASE_DIR / "config" / "youtube_token.json"
+    
+    scopes = ["https://www.googleapis.com/auth/youtube.upload"]
+    
+    creds = None
+    if token_path.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+        except Exception as e:
+            print(f"[YouTube] ⚠️ Error loading credentials: {e}")
+            
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"[YouTube] ⚠️ Error refreshing token: {e}")
+                creds = None
+        else:
+            creds = None
+            
+        if not creds:
+            if not secrets_path.exists():
+                msg = (
+                    "YouTube upload requires OAuth2 configuration. Please download your OAuth2 client secret file "
+                    "from Google Cloud Console (APIs & Services > Credentials), save it as "
+                    f"'{secrets_path}', and try again."
+                )
+                if player:
+                    player.write_log("[YouTube] ⚠️ client_secrets.json missing in config folder")
+                return msg
+                
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(str(secrets_path), scopes)
+                creds = flow.run_local_server(port=0)
+                token_path.parent.mkdir(parents=True, exist_ok=True)
+                token_path.write_text(creds.to_json(), encoding="utf-8")
+            except Exception as e:
+                return f"OAuth2 authorization failed: {e}"
+                
+    try:
+        youtube = build("youtube", "v3", credentials=creds)
+        
+        body = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": tags,
+                "categoryId": "22"
+            },
+            "status": {
+                "privacyStatus": privacy
+            }
+        }
+        
+        media = MediaFileUpload(
+            str(video_path),
+            mimetype="video/*",
+            resumable=True,
+            chunksize=1024*1024
+        )
+        
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media
+        )
+        
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                progress = int(status.progress() * 100)
+                msg = f"[YouTube] Uploading: {progress}% completed"
+                print(msg)
+                if player:
+                    player.write_log(msg)
+                    
+        video_id = response.get("id")
+        video_url = f"https://youtu.be/{video_id}"
+        success_msg = f"Successfully uploaded video to YouTube: {video_url}"
+        if player:
+            player.write_log(f"[YouTube] SUCCESS: {video_url}")
+        if speak:
+            speak("Upload completed successfully, sir.")
+        return success_msg
+        
+    except HttpError as e:
+        err_msg = f"YouTube API HTTP error: {e}"
+        print(f"[YouTube] ❌ {err_msg}")
+        return err_msg
+    except Exception as e:
+        err_msg = f"YouTube upload failed: {e}"
+        print(f"[YouTube] ❌ {err_msg}")
+        return err_msg
+
 _ACTION_MAP = {
     "play":      _handle_play,
     "summarize": _handle_summarize,
     "get_info":  _handle_get_info,
     "trending":  _handle_trending,
+    "upload":    _handle_upload,
 }
 
 

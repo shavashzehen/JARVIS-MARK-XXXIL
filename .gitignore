@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+ENV/
+
+# Configuration and API keys (CRITICAL: Do not upload credentials)
+config/api_keys.json
+config/smart_home_state.json
+config/face_reference.jpg
+
+# Memory and backups
+memory/
+backups/
+
+# Platform tools
+platform-tools.zip
+platform-tools/
+*.log
+*.tmp

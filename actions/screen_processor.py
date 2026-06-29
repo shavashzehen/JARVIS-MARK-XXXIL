@@ -9,6 +9,12 @@ import sys
 import threading
 import time
 from pathlib import Path
+import subprocess as _subprocess
+import os
+_BASE = Path(__file__).resolve().parent.parent
+_pt_path = _BASE / "platform-tools"
+if _pt_path.exists() and str(_pt_path) not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = str(_pt_path) + os.pathsep + os.environ.get("PATH", "")
 from typing import Optional
 
 import numpy as np
@@ -117,6 +123,42 @@ def _capture_screen() -> tuple[bytes, str]:
         png      = mss.tools.to_png(shot.rgb, shot.size)
 
     return _compress(png, "PNG")
+
+
+_adb_path = str(_pt_path / "adb.exe") if _pt_path.exists() else "adb"
+
+def _capture_phone(device: str = None, player = None, compress: bool = True) -> tuple[bytes, str]:
+    """Capture phone screen via ADB and compress optionally."""
+    if not device:
+        if player and hasattr(player, "active_device") and player.active_device:
+            device = player.active_device
+        else:
+            try:
+                import subprocess as _sub
+                r = _sub.run([_adb_path, "devices"], capture_output=True, timeout=5)
+                lines = r.stdout.decode(errors="replace").strip().split("\n")[1:]
+                for line in lines:
+                    line = line.strip()
+                    if line and "offline" not in line:
+                        parts = line.split()
+                        if parts:
+                            device = parts[0]
+                            break
+            except Exception:
+                pass
+
+    cmd = [_adb_path]
+    if device:
+        cmd += ["-s", device]
+    cmd += ["exec-out", "screencap", "-p"]
+    result = _subprocess.run(cmd, capture_output=True, timeout=10)
+    if result.returncode != 0:
+        raise RuntimeError(f"ADB screencap failed: {result.stderr.decode(errors='replace')}")
+    if not result.stdout:
+        raise RuntimeError("ADB screencap returned empty data — is the phone connected?")
+    if compress:
+        return _compress(result.stdout, "PNG")
+    return result.stdout, "image/png"
 
 
 def _cv2_backend() -> int:
@@ -408,6 +450,9 @@ def screen_process(
         if angle == "camera":
             image_bytes, mime_type = _capture_camera()
             print(f"[Vision] 📷 Camera: {len(image_bytes):,} bytes")
+        elif angle == "phone":
+            image_bytes, mime_type = _capture_phone(params.get("device"), player)
+            print(f"[Vision] 📱 Phone: {len(image_bytes):,} bytes")
         else:
             image_bytes, mime_type = _capture_screen()
             print(f"[Vision] 🖥️  Screen: {len(image_bytes):,} bytes")

@@ -61,17 +61,64 @@ computer_settings
   value: string (optional)
 
 computer_control
-  action: "type" | "click" | "hotkey" | "press" | "scroll" | "screenshot" | "screen_find" | "screen_click" (required)
-  text: string (for type)
+  action: "type" | "click" | "hotkey" | "press" | "scroll" | "screenshot" | "screen_find" | "screen_click" | "window_list" | "window_close" | "window_snap" | "clipboard_get" | "clipboard_set" | "run_command" | "system_info" | "process_kill" | "hacking_prank" | "screenshot_active" | "empty_recycle_bin" | "lock_workstation" | "get_selected_text" | "volume_set" | "brightness_set" | "mute_toggle" | "open_url" (required)
+  text: string (for type / command text / process name)
   x, y: int (for click)
   keys: string (for hotkey, e.g. "ctrl+c")
   key: string (for press)
-  direction: "up" | "down" (for scroll)
+  direction: "up" | "down" (for scroll / or snap direction: left | right | maximize | minimize | restore)
   description: string (for screen_find/screen_click)
+  title: string (for window_close/window_snap/focus_window)
+  value: int (for volume_set/brightness_set, 0-100)
+  url: string (for open_url)
+
+screen_sentinel
+  action: "start" | "stop" | "status" | "check" (required)
+  interval: int (optional - sentinel check interval, default: 60)
+
+
+phone_control
+  action: "tap" | "swipe" | "type" | "key" | "screenshot" | "open_app" | "close_app" | "screen_find" | "screen_tap" | "scroll" | "home" | "back" | "notifications" | "call" | "end_call" | "send_sms" | "send_whatsapp" | "whatsapp_call" | "record_screen" | "stop_recording" | "phone_info" | "list_apps" | "open_url" | "current_app" | "pull_file" | "push_file" | "search_contacts" | "device_check" | "list_devices" | "backup" | "share_clipboard" | "battery_status" | "ringer_mode" | "camera_photo" | "youtube_play" | "screen_state" | "diagnose_and_fix" | "reboot" | "reset_app" | "grant_permissions" (required)
+  device: string (optional — device serial for multi-phone)
+  call_type: string (optional - for whatsapp_call: audio | video)
+  backup_type: "all" | "contacts" | "photos" | "documents" | "downloads" (optional)
+  x, y: int (for tap)
+  text: string (for type / clipboard share)
+  app_name: string (for open_app/close_app, e.g. "WhatsApp")
+  description: string (for screen_find/screen_tap — AI finds element)
+  direction: "up" | "down" | "left" | "right" (for scroll)
+  phone_number: string (for call/send_sms)
+  contact_name: string (for call/message/search)
+  message: string (for send_sms/send_whatsapp)
+  url: string (for open_url)
+  duration: int (for record_screen in seconds)
+  save_path: string (for screenshot/recording/photo save location)
+  local_path: string (for backup destination / file push)
+  value: int (for brightness, 0-255)
+  query: string (for YouTube search/play)
+  state: "on" | "off" | "toggle" (for screen_state)
+  mode: "silent" | "vibrate" | "normal" (for ringer_mode)
+  ui_glitch: bool (optional — True to restart System UI for diagnose_and_fix)
 
 screen_process
   text: string (required) — what to analyze or ask about the screen
-  angle: "screen" | "camera" (optional)
+  angle: "screen" | "camera" | "phone" (optional)
+
+smart_home
+  action: "turn_on" | "turn_off" | "set_temp" | "set_fan_speed" | "status" (required)
+  device: "light" | "fan" | "ac" | "lock" (required)
+  value: string (for temperature / fan speed)
+
+web_agent
+  goal: string (required) — autonomous web task goal
+
+jarvis_learning
+  action: "learn_routine" | "save_preference" | "list_routines" (required)
+  trigger: string (custom voice trigger trigger)
+  actions: array of strings (macro action sequences in JSON format)
+  preference_key: string (for save_preference)
+  preference_value: string (for save_preference)
+
 
 send_message
   receiver: string (required)
@@ -89,8 +136,13 @@ desktop_control
   task: string (optional)
 
 youtube_video
-  action: "play" | "summarize" | "trending" (required)
+  action: "play" | "summarize" | "trending" | "upload" (required)
   query: string (for play)
+  video_path: string (for upload)
+  title: string (for upload)
+  description: string (for upload)
+  tags: string (for upload, e.g. "gaming, tutorial")
+  privacy_status: "public" | "private" | "unlisted" (for upload)
 
 weather_report
   city: string (required)

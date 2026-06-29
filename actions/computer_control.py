@@ -241,6 +241,94 @@ def _clear_field() -> str:
     pyautogui.press("delete")
     return "Field cleared"
 
+def _screenshot_active(save_path: str | None = None) -> str:
+    _require_pyautogui()
+    path = _safe_screenshot_path(save_path)
+    try:
+        import pygetwindow as gw
+        active = gw.getActiveWindow()
+        if active and active.width > 0 and active.height > 0:
+            x, y, w, h = active.left, active.top, active.width, active.height
+            img = pyautogui.screenshot(region=(x, y, w, h))
+            img.save(str(path))
+            return f"Active window '{active.title}' screenshot saved: {path}"
+    except Exception as e:
+        print(f"[ComputerControl] Active window screenshot failed: {e}")
+    # Fallback to full screenshot
+    return _screenshot(save_path)
+
+def _empty_recycle_bin() -> str:
+    os_name = _get_os()
+    if os_name == "windows":
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"],
+                capture_output=True, timeout=10
+            )
+            return "Windows Recycle Bin emptied successfully."
+        except Exception as e:
+            return f"Failed to empty Windows Recycle Bin: {e}"
+    elif os_name == "mac":
+        try:
+            subprocess.run(
+                ["osascript", "-e", 'tell application "Finder" to empty trash'],
+                capture_output=True, timeout=10
+            )
+            return "macOS Trash emptied successfully."
+        except Exception as e:
+            return f"Failed to empty macOS Trash: {e}"
+    elif os_name == "linux":
+        try:
+            subprocess.run("rm -rf ~/.local/share/Trash/*", shell=True, timeout=10)
+            return "Linux Trash emptied successfully."
+        except Exception as e:
+            return f"Failed to empty Linux Trash: {e}"
+    return f"empty_recycle_bin: unsupported OS '{os_name}'"
+
+def _lock_workstation() -> str:
+    os_name = _get_os()
+    if os_name == "windows":
+        try:
+            import ctypes
+            ctypes.windll.user32.LockWorkStation()
+            return "Windows locked successfully."
+        except Exception as e:
+            subprocess.run("rundll32.exe user32.dll,LockWorkStation", shell=True)
+            return "Windows lock command sent."
+    elif os_name == "mac":
+        subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to keystroke "q" using {control down, command down}'],
+            capture_output=True
+        )
+        return "macOS Lock command sent."
+    elif os_name == "linux":
+        subprocess.run("xdg-screensaver lock", shell=True)
+        return "Linux lock command sent."
+    return f"lock_workstation: unsupported OS '{os_name}'"
+
+def _get_selected_text() -> str:
+    _require_pyautogui()
+    old_clipboard = ""
+    if _PYPERCLIP:
+        try:
+            old_clipboard = pyperclip.paste()
+        except Exception:
+            pass
+            
+    pyautogui.hotkey("ctrl", "c")
+    time.sleep(0.15)
+    
+    selected = ""
+    if _PYPERCLIP:
+        try:
+            selected = pyperclip.paste()
+            if old_clipboard:
+                pyperclip.copy(old_clipboard)
+        except Exception:
+            pass
+            
+    return selected.strip() if selected else "(no text selected or clipboard copy failed)"
+
 def _focus_window(title: str) -> str:
     os_name = _get_os()
 
@@ -389,6 +477,14 @@ def computer_control(
       screen_click  — AI element finder + click
       random_data   — generate fake form data
       user_data     — pull real data from memory
+      window_list   — list all open windows
+      window_close  — close a window by title
+      window_snap   — snap window (left/right/maximize/minimize)
+      clipboard_get — read clipboard content
+      clipboard_set — write text to clipboard
+      run_command   — execute a shell command
+      system_info   — get detailed system information
+      process_kill  — kill a process by name
     """
     params = parameters or {}
     action = params.get("action", "").lower().strip()
@@ -492,6 +588,204 @@ def computer_control(
                 value = _random_data(field)
                 print(f"[ComputerControl] ⚠️ No '{field}' in memory, using random: {value}")
             return value
+
+        # ── Enhanced Actions ──
+
+        if action == "window_list":
+            try:
+                import pygetwindow as gw
+                windows = gw.getAllWindows()
+                visible = [w for w in windows if w.title.strip() and w.visible]
+                if not visible:
+                    return "No visible windows found."
+                lines = [f"  {i+1}. {w.title}" for i, w in enumerate(visible[:20])]
+                return f"Open windows ({len(visible)}):\n" + "\n".join(lines)
+            except ImportError:
+                return "pygetwindow not installed."
+
+        if action == "window_close":
+            title = params.get("title", "")
+            if not title:
+                return "title required for window_close"
+            try:
+                import pygetwindow as gw
+                windows = gw.getWindowsWithTitle(title)
+                if not windows:
+                    return f"No window found with title containing: '{title}'"
+                windows[0].close()
+                return f"Closed window: '{windows[0].title}'"
+            except Exception as e:
+                return f"window_close failed: {e}"
+
+        if action == "window_snap":
+            direction = params.get("direction", "maximize").lower()
+            title = params.get("title", "")
+            try:
+                import pygetwindow as gw
+                if title:
+                    wins = gw.getWindowsWithTitle(title)
+                    if not wins:
+                        return f"No window: '{title}'"
+                    win = wins[0]
+                else:
+                    win = gw.getActiveWindow()
+                    if not win:
+                        return "No active window."
+                
+                if direction == "maximize":
+                    win.maximize()
+                elif direction == "minimize":
+                    win.minimize()
+                elif direction == "restore":
+                    win.restore()
+                elif direction == "left":
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    sw, sh = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+                    win.restore()
+                    win.moveTo(0, 0)
+                    win.resizeTo(sw // 2, sh)
+                elif direction == "right":
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    sw, sh = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+                    win.restore()
+                    win.moveTo(sw // 2, 0)
+                    win.resizeTo(sw // 2, sh)
+                else:
+                    return f"Unknown snap direction: '{direction}'"
+                return f"Window snapped: {direction}"
+            except Exception as e:
+                return f"window_snap failed: {e}"
+
+        if action == "clipboard_get":
+            return _clipboard_get()
+
+        if action == "clipboard_set":
+            text = params.get("text", "")
+            if not text:
+                return "text required for clipboard_set"
+            if _PYPERCLIP:
+                pyperclip.copy(text)
+                return f"Clipboard set ({len(text)} chars)"
+            return "pyperclip not installed"
+
+        if action == "run_command":
+            cmd = params.get("command", "") or params.get("text", "")
+            if not cmd:
+                return "command required for run_command"
+            try:
+                r = subprocess.run(
+                    cmd, shell=True, capture_output=True,
+                    timeout=30, text=True
+                )
+                out = r.stdout.strip()
+                err = r.stderr.strip()
+                result_text = out or err or "(no output)"
+                if len(result_text) > 2000:
+                    result_text = result_text[:2000] + "...(truncated)"
+                return result_text
+            except subprocess.TimeoutExpired:
+                return "Command timed out (30s limit)"
+            except Exception as e:
+                return f"run_command failed: {e}"
+
+        if action == "system_info":
+            try:
+                import psutil
+                mem = psutil.virtual_memory()
+                disk = psutil.disk_usage("/")
+                cpu_freq = psutil.cpu_freq()
+                
+                lines = [
+                    f"CPU: {psutil.cpu_count()} cores, {psutil.cpu_percent()}% usage",
+                    f"CPU Freq: {cpu_freq.current:.0f}MHz" if cpu_freq else "CPU Freq: N/A",
+                    f"RAM: {mem.used // (1024**3):.1f}GB / {mem.total // (1024**3):.1f}GB ({mem.percent}%)",
+                    f"Disk: {disk.used // (1024**3):.0f}GB / {disk.total // (1024**3):.0f}GB ({disk.percent}%)",
+                ]
+                
+                try:
+                    battery = psutil.sensors_battery()
+                    if battery:
+                        lines.append(f"Battery: {battery.percent}%{' (Charging)' if battery.power_plugged else ''}")
+                except Exception:
+                    pass
+                
+                import platform as plat
+                lines.append(f"OS: {plat.system()} {plat.release()}")
+                lines.append(f"Machine: {plat.machine()}")
+                
+                return "\n".join(lines)
+            except Exception as e:
+                return f"system_info failed: {e}"
+
+        if action == "process_kill":
+            name = params.get("name", "") or params.get("text", "")
+            if not name:
+                return "name required for process_kill"
+            try:
+                import psutil
+                killed = 0
+                for proc in psutil.process_iter(["name", "pid"]):
+                    if name.lower() in proc.info["name"].lower():
+                        proc.kill()
+                        killed += 1
+                if killed:
+                    return f"Killed {killed} process(es) matching '{name}'"
+                return f"No process found matching: '{name}'"
+            except Exception as e:
+                return f"process_kill failed: {e}"
+
+        if action == "hacking_prank":
+            if player:
+                player.show_hacker_prank()
+                return "Hacker prank overlay console activated."
+            return "Failed to show hacker prank — UI player not active."
+
+        if action == "screenshot_active":
+            return _screenshot_active(params.get("path"))
+
+        if action == "empty_recycle_bin":
+            return _empty_recycle_bin()
+
+        if action == "lock_workstation":
+            return _lock_workstation()
+
+        if action == "get_selected_text":
+            return _get_selected_text()
+
+        if action == "volume_set":
+            val = int(params.get("value", 50))
+            from actions.computer_settings import volume_set
+            volume_set(val)
+            return f"System volume set to {val}%"
+
+        if action == "brightness_set":
+            val = int(params.get("value", 50))
+            os_name = _get_os()
+            if os_name == "windows":
+                try:
+                    subprocess.run(
+                        ["powershell", "-Command",
+                         f"(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {val})"],
+                        capture_output=True, timeout=5
+                    )
+                except Exception:
+                    pass
+            return f"System brightness set to {val}%"
+
+        if action == "mute_toggle":
+            from actions.computer_settings import volume_mute
+            volume_mute()
+            return "Volume mute toggled."
+
+        if action == "open_url":
+            url = params.get("url", "")
+            if not url:
+                return "url required for open_url"
+            import webbrowser
+            webbrowser.open(url)
+            return f"Opened URL in default browser: {url}"
 
         return f"Unknown action: '{action}'"
 

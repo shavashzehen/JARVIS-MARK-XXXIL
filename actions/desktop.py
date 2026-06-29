@@ -447,7 +447,11 @@ def desktop_control(
             return get_current_wallpaper()
 
         elif action == "organize":
-            return organize_desktop(params.get("mode", "by_type"))
+            mode = params.get("mode", "ai")
+            if mode == "ai":
+                from actions.desktop_organizer import organize_desktop as ai_organize
+                return ai_organize(player=player)
+            return organize_desktop(mode)
 
         elif action == "clean":
             return clean_desktop()

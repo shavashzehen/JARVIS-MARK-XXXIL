@@ -1,7 +1,5 @@
 # 🤖 MARK XXXIX (39)
-### The Ultimate Cross-Platform Personal AI Assistant — By FatihMakes
-
-> 📺 **[Watch the full setup video on YouTube](https://youtu.be/ej1f5OE3SNQ?si=lCxDhJix9ungq1Ry)**
+### Customized Personal AI Assistant — Forked & Enhanced by Shawez (Ethical Hacker)
 
 A real-time voice AI that can hear, see, understand, and control your computer — on any OS. Supporting Windows, macOS, and Linux. Local execution. Zero subscriptions. Engineered for total autonomy.
 
@@ -70,12 +68,11 @@ Licensed under **[Creative Commons BY-NC 4.0](https://creativecommons.org/licens
 
 ---
 
-## 👤 Connect with the Creator
+## 👤 Connect with the Developer / Customizer
 
-Engineered by a developer building a real-world JARVIS-style assistant.
-⭐ **Star the repository to support the journey to Mark 100.**
+Customized and enhanced by **Shawez**, an Ethical Hacker building a personalized JARVIS-style assistant.
 
 | Platform | Link |
 |---|---|
-| YouTube | [@FatihMakes](https://www.youtube.com/@FatihMakes) |
-| Instagram | [@fatihmakes](https://www.instagram.com/fatihmakes) |
+| Instagram | [@shawez__eritical_haker](https://www.instagram.com/shawez__eritical_haker?igsh=MWR3N3JlbTNuMGU2Yw==) |
+| Original Project | [FatihMakes/Mark-XXXIX](https://github.com/FatihMakes/Mark-XXXIX) |

@@ -6,6 +6,14 @@ import sys
 import traceback
 from pathlib import Path
 
+# Configure console encoding to UTF-8 on Windows to prevent UnicodeEncodeError print crashes
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import sounddevice as sd
 from google import genai
 from google.genai import types
@@ -31,6 +39,8 @@ from actions.dev_agent         import dev_agent
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
+from actions.phone_control     import phone_control
+from actions.screen_sentinel    import screen_sentinel
 
 
 def get_base_dir():
@@ -144,16 +154,21 @@ TOOL_DECLARATIONS = [
         "name": "youtube_video",
         "description": (
             "Controls YouTube. Use for: playing videos, summarizing a video's content, "
-            "getting video info, or showing trending videos."
+            "getting video info, showing trending videos, or uploading a local video to the user's channel."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "action": {"type": "STRING", "description": "play | summarize | get_info | trending (default: play)"},
+                "action": {"type": "STRING", "description": "play | summarize | get_info | trending | upload (default: play)"},
                 "query":  {"type": "STRING", "description": "Search query for play action"},
                 "save":   {"type": "BOOLEAN", "description": "Save summary to Notepad (summarize only)"},
                 "region": {"type": "STRING", "description": "Country code for trending e.g. TR, US"},
                 "url":    {"type": "STRING", "description": "Video URL for get_info action"},
+                "video_path": {"type": "STRING", "description": "Local path to the video file to upload"},
+                "title":  {"type": "STRING", "description": "Title of the uploaded video"},
+                "description": {"type": "STRING", "description": "Description of the uploaded video"},
+                "tags":   {"type": "STRING", "description": "Comma-separated tags for the upload"},
+                "privacy_status": {"type": "STRING", "description": "public | private | unlisted"},
             },
             "required": []
         }
@@ -170,7 +185,7 @@ TOOL_DECLARATIONS = [
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"},
+                "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam, 'phone' for Android phone screen via ADB. Default: 'screen'"},
                 "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
             },
             "required": ["text"]
@@ -306,27 +321,131 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "computer_control",
-        "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen.",
+        "description": "Direct computer control: type, click, hotkeys, scroll, move mouse, screenshots, find elements on screen, windows management, system commands, volume, brightness, open URLs, and info.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "action":      {"type": "STRING", "description": "type | smart_type | click | double_click | right_click | hotkey | press | scroll | move | copy | paste | screenshot | wait | clear_field | focus_window | screen_find | screen_click | random_data | user_data"},
-                "text":        {"type": "STRING", "description": "Text to type or paste"},
+                "action":      {"type": "STRING", "description": "type | smart_type | click | double_click | right_click | hotkey | press | scroll | move | copy | paste | screenshot | wait | clear_field | focus_window | screen_find | screen_click | random_data | user_data | window_list | window_close | window_snap | clipboard_get | clipboard_set | run_command | system_info | process_kill | hacking_prank | screenshot_active | empty_recycle_bin | lock_workstation | get_selected_text | volume_set | brightness_set | mute_toggle | open_url"},
+                "text":        {"type": "STRING", "description": "Text to type or paste / command text / process name"},
                 "x":           {"type": "INTEGER", "description": "X coordinate"},
                 "y":           {"type": "INTEGER", "description": "Y coordinate"},
                 "keys":        {"type": "STRING", "description": "Key combination e.g. 'ctrl+c'"},
                 "key":         {"type": "STRING", "description": "Single key e.g. 'enter'"},
-                "direction":   {"type": "STRING", "description": "up | down | left | right"},
+                "direction":   {"type": "STRING", "description": "up | down | left | right (or snap direction: left | right | maximize | minimize | restore)"},
                 "amount":      {"type": "INTEGER", "description": "Scroll amount (default: 3)"},
                 "seconds":     {"type": "NUMBER",  "description": "Seconds to wait"},
-                "title":       {"type": "STRING",  "description": "Window title for focus_window"},
+                "title":       {"type": "STRING",  "description": "Window title for focus_window / window_close / window_snap"},
                 "description": {"type": "STRING",  "description": "Element description for screen_find/screen_click"},
                 "type":        {"type": "STRING",  "description": "Data type for random_data"},
                 "field":       {"type": "STRING",  "description": "Field for user_data: name|email|city"},
                 "clear_first": {"type": "BOOLEAN", "description": "Clear field before typing (default: true)"},
                 "path":        {"type": "STRING",  "description": "Save path for screenshot"},
+                "value":       {"type": "INTEGER", "description": "Value for volume_set or brightness_set (0-100)"},
+                "url":         {"type": "STRING",  "description": "URL to open in default browser"},
             },
             "required": ["action"]
+        }
+    },
+    {
+        "name": "screen_sentinel",
+        "description": "Controls the always-on security screen sentinel monitor. Start, stop, check current status or run an immediate check for phishing/malware/scams.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "start | stop | status | check"},
+                "interval": {"type": "INTEGER", "description": "Sentinel monitoring interval in seconds (default: 60)"}
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "phone_control",
+        "description": (
+            "Controls the user's Android phone via ADB. "
+            "Use for ANY phone-related request: open apps, tap, swipe, type, "
+            "take screenshots, go home/back, scroll, view phone screen, "
+            "find and tap UI elements, send WhatsApp/SMS messages FROM the phone, "
+            "make phone calls, record phone screen, get phone info, "
+            "transfer files, search contacts, control volume/brightness, capture camera photos, search/play YouTube, check battery, set ringer mode. "
+            "Supports multiple phones (10-25 devices) — specify device serial if multiple connected. "
+            "The phone must be connected via USB or WiFi ADB."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": (
+                        "tap | swipe | long_press | type | key | screenshot | "
+                        "open_app | close_app | screen_find | screen_tap | scroll | "
+                        "home | back | recents | notifications | "
+                        "volume_up | volume_down | mute | brightness | "
+                        "wifi_toggle | airplane_mode | "
+                        "phone_info | current_app | list_apps | install_apk | "
+                        "open_url | power | lock_screen | unlock | "
+                        "call | end_call | send_sms | send_whatsapp | whatsapp_call | "
+                        "record_screen | stop_recording | "
+                        "pull_file | push_file | search_contacts | "
+                        "wifi_connect | device_check | list_devices | backup | share_clipboard | "
+                        "battery_status | ringer_mode | camera_photo | youtube_play | screen_state | diagnose_and_fix | "
+                        "reboot | reset_app | grant_permissions"
+                    )
+                },
+                "device":      {"type": "STRING",  "description": "Device serial number (optional — uses first device if omitted). Use list_devices to see all."},
+                "backup_type": {"type": "STRING",  "description": "Backup type: all | contacts | photos | documents | downloads (default: all)"},
+                "call_type":   {"type": "STRING",  "description": "Call type for WhatsApp call: audio | video (default: audio)"},
+                "x":           {"type": "INTEGER", "description": "X coordinate for tap"},
+                "y":           {"type": "INTEGER", "description": "Y coordinate for tap"},
+                "x1":          {"type": "INTEGER", "description": "Start X for swipe"},
+                "y1":          {"type": "INTEGER", "description": "Start Y for swipe"},
+                "x2":          {"type": "INTEGER", "description": "End X for swipe"},
+                "y2":          {"type": "INTEGER", "description": "End Y for swipe"},
+                "duration":    {"type": "INTEGER", "description": "Swipe duration ms (default: 300) or recording seconds"},
+                "text":        {"type": "STRING",  "description": "Text to type on phone"},
+                "keycode":     {"type": "STRING",  "description": "Android keycode (e.g. KEYCODE_ENTER)"},
+                "app_name":    {"type": "STRING",  "description": "App name (e.g. 'WhatsApp', 'Chrome')"},
+                "description": {"type": "STRING",  "description": "Element description for screen_find/screen_tap"},
+                "direction":   {"type": "STRING",  "description": "Scroll direction: up | down | left | right"},
+                "url":         {"type": "STRING",  "description": "URL to open in phone browser"},
+                "apk_path":    {"type": "STRING",  "description": "APK file path for install"},
+                "ip_address":  {"type": "STRING",  "description": "Phone IP for WiFi ADB"},
+                "save_path":   {"type": "STRING",  "description": "Local path to save screenshot/recording/photo"},
+                "phone_number":{"type": "STRING",  "description": "Phone number for call/SMS"},
+                "contact_name":{"type": "STRING",  "description": "Contact name for call/message/search"},
+                "message":     {"type": "STRING",  "description": "Message text for SMS/WhatsApp"},
+                "phone_path":  {"type": "STRING",  "description": "File path on phone for pull"},
+                "local_path":  {"type": "STRING",  "description": "Local file path for push/backup"},
+                "value":       {"type": "INTEGER", "description": "Value for brightness (0-255)"},
+                "query":       {"type": "STRING",  "description": "YouTube search query or search term"},
+                "state":       {"type": "STRING",  "description": "Screen state: on | off | toggle"},
+                "mode":        {"type": "STRING",  "description": "Ringer mode: silent | vibrate | normal"},
+                "ui_glitch":   {"type": "BOOLEAN", "description": "True to restart System UI to resolve screen freezes"},
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "smart_home",
+        "description": "Simulates and controls Smart Home IoT devices: Living Room Lights, Fan Speed, AC Temperature, and Door Locks.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "turn_on | turn_off | set_temp | set_fan_speed | status"},
+                "device": {"type": "STRING", "description": "light | fan | ac | lock"},
+                "value":  {"type": "STRING", "description": "Temperature value (16-30) or Fan speed (1-3)"}
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "web_agent",
+        "description": "Runs an autonomous web agent to accomplish multi-step browser tasks using Gemini Vision and scrolling.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "goal": {"type": "STRING", "description": "The target goal for the autonomous agent to complete."}
+            },
+            "required": ["goal"]
         }
     },
     {
@@ -478,6 +597,47 @@ TOOL_DECLARATIONS = [
             "required": ["category", "key", "value"]
         }
     },
+    {
+        "name": "jarvis_learning",
+        "description": (
+            "Allows Jarvis to learn custom voice macro routines and save user preferences. "
+            "Use 'learn_routine' to link a voice trigger to a sequence of actions. "
+            "Use 'save_preference' to store general configuration/preferences. "
+            "Use 'list_routines' to view all learned macros."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "learn_routine | save_preference | list_routines"
+                },
+                "trigger": {
+                    "type": "STRING",
+                    "description": "The custom voice trigger (e.g. 'work mode', 'good morning')"
+                },
+                "actions": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": (
+                        "List of actions to run sequentially. "
+                        "Each action is a JSON string specifying the tool and its parameters. "
+                        "Example: ['{\"tool\": \"smart_home\", \"parameters\": {\"device\": \"light\", \"action\": \"turn_on\"}}', "
+                        "'{\"tool\": \"open_app\", \"parameters\": {\"app_name\": \"WhatsApp\"}}']"
+                    )
+                },
+                "preference_key": {
+                    "type": "STRING",
+                    "description": "The key of the preference to save (for save_preference)"
+                },
+                "preference_value": {
+                    "type": "STRING",
+                    "description": "The value of the preference to save (for save_preference)"
+                }
+            },
+            "required": ["action"]
+        }
+    },
 ]
 
 class JarvisLive:
@@ -493,9 +653,64 @@ class JarvisLive:
         self.ui.on_text_command = self._on_text_command
         self._turn_done_event: asyncio.Event | None = None
 
+    def _execute_learned_routine(self, trigger: str):
+        try:
+            from actions.jarvis_learning import _load_routines
+            routines = _load_routines()
+            actions = routines.get(trigger)
+            if not actions:
+                return
+                
+            self.ui.write_log(f"SYS: [AI-Learning] Triggered custom routine '{trigger}'")
+            self.speak(f"Executing your learned routine '{trigger}', sir.")
+            
+            def run_actions():
+                import json
+                import asyncio
+                for act_str in actions:
+                    try:
+                        # 1. Parse JSON action
+                        act = json.loads(act_str)
+                        tool_name = act.get("tool")
+                        params = act.get("parameters", {})
+                        
+                        self.ui.write_log(f"SYS: [AI-Learning] Running tool: {tool_name}...")
+                        
+                        class MockFunctionCall:
+                            def __init__(self, name, args):
+                                self.name = name
+                                self.args = args
+                                
+                        async def execute_task():
+                            fc = MockFunctionCall(tool_name, params)
+                            await self._execute_tool(fc)
+                            
+                        # Execute in the main event loop
+                        asyncio.run_coroutine_threadsafe(execute_task(), self._loop).result()
+                        time.sleep(1)
+                    except Exception as e:
+                        self.ui.write_log(f"SYS: [ERROR] Failed to run learned action '{act_str}': {e}")
+                        
+            threading.Thread(target=run_actions, daemon=True).start()
+        except Exception as e:
+            print(f"[Learning] Failed to run routine: {e}")
+
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             return
+            
+        # Check custom routines
+        try:
+            from actions.jarvis_learning import _load_routines
+            routines = _load_routines()
+            clean_txt = text.lower().strip()
+            for trigger in routines:
+                if trigger in clean_txt:
+                    self._execute_learned_routine(trigger)
+                    return
+        except Exception as e:
+            print(f"[Learning] Trigger check failed: {e}")
+
         asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"parts": [{"text": text}]},
@@ -586,6 +801,17 @@ class JarvisLive:
             )
 
         loop   = asyncio.get_event_loop()
+
+        if name == "jarvis_learning":
+            from actions.jarvis_learning import jarvis_learning
+            r = await loop.run_in_executor(None, lambda: jarvis_learning(parameters=args, player=self.ui, speak=self.speak))
+            result = r or "Done."
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return types.FunctionResponse(
+                id=fc.id, name=name,
+                response={"result": result}
+            )
         result = "Done."
 
         try:
@@ -663,6 +889,28 @@ class JarvisLive:
 
             elif name == "computer_control":
                 r = await loop.run_in_executor(None, lambda: computer_control(parameters=args, player=self.ui))
+                result = r or "Done."
+
+            elif name == "phone_control":
+                r = await loop.run_in_executor(None, lambda: phone_control(parameters=args, player=self.ui))
+                result = r or "Done."
+
+            elif name == "screen_sentinel":
+                r = await loop.run_in_executor(
+                    None,
+                    lambda: screen_sentinel(parameters=args, player=self.ui, speak=self.speak)
+                )
+                result = r or "Done."
+
+            elif name == "smart_home":
+                from actions.smart_home import smart_home
+                r = await loop.run_in_executor(None, lambda: smart_home(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Done."
+
+            elif name == "web_agent":
+                from actions.web_agent import run_autonomous_web_task
+                goal = args.get("goal", "") or args.get("query", "")
+                r = await loop.run_in_executor(None, lambda: run_autonomous_web_task(goal, player=self.ui))
                 result = r or "Done."
 
             elif name == "game_updater":
@@ -850,6 +1098,14 @@ class JarvisLive:
                     self.ui.set_state("LISTENING")
                     self.ui.write_log("SYS: JARVIS online.")
 
+                    # Start Proactive Thought Engine
+                    try:
+                        from actions.proactive_brain import ProactiveBrain
+                        self.brain = ProactiveBrain(self)
+                        self.brain.start()
+                    except Exception as e:
+                        print(f"[JARVIS] Failed to start proactive thought engine: {e}")
+
                     tg.create_task(self._send_realtime())
                     tg.create_task(self._listen_audio())
                     tg.create_task(self._receive_audio())
@@ -858,6 +1114,13 @@ class JarvisLive:
             except Exception as e:
                 print(f"[JARVIS] ⚠️ {e}")
                 traceback.print_exc()
+            
+            if hasattr(self, "brain") and self.brain:
+                try:
+                    self.brain.stop()
+                except Exception:
+                    pass
+
             self.set_speaking(False)
             self.ui.set_state("THINKING")
             print("[JARVIS] 🔄 Reconnecting in 3s...")
